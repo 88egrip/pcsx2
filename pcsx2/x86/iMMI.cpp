@@ -1198,22 +1198,19 @@ void recPABSH()
 
 	int info = eeRecompileCodeXMM( XMMINFO_READT|XMMINFO_WRITED );
 	int t0reg = _allocTempXMMreg(XMMT_INT, -1);
-	xPCMP.EQW(xRegisterSSE(t0reg), xRegisterSSE(t0reg));
-	xPSLL.W(xRegisterSSE(t0reg), 15);
-	xPCMP.EQW(xRegisterSSE(t0reg), xRegisterSSE(EEREC_T)); //0xffff if equal to 0x8000
 	if( x86caps.hasSupplementalStreamingSIMD3Extensions ) {
 		xPABS.W(xRegisterSSE(EEREC_D), xRegisterSSE(EEREC_T)); //0x8000 -> 0x8000
+		xMOVDQA(xRegisterSSE(t0reg), xRegisterSSE(EEREC_D));
+		xPSRA.W(xRegisterSSE(t0reg), 15); //0x8000 is the only possible negative number resulting from pabs
+		xPXOR(xRegisterSSE(EEREC_D), xRegisterSSE(t0reg)); //0x8000 -> 0x7fff
 	}
 	else {
-		int t1reg = _allocTempXMMreg(XMMT_INT, -1);
-		xMOVDQA(xRegisterSSE(t1reg), xRegisterSSE(EEREC_T));
+		xMOVDQA(xRegisterSSE(t0reg), xRegisterSSE(EEREC_T));
 		xMOVDQA(xRegisterSSE(EEREC_D), xRegisterSSE(EEREC_T));
-		xPSRA.W(xRegisterSSE(t1reg), 15);
-		xPXOR(xRegisterSSE(EEREC_D), xRegisterSSE(t1reg));
-		xPSUB.W(xRegisterSSE(EEREC_D), xRegisterSSE(t1reg)); //0x8000 -> 0x8000
-		_freeXMMreg(t1reg);
+		xPSRA.W(xRegisterSSE(t0reg), 15);
+		xPXOR(xRegisterSSE(EEREC_D), xRegisterSSE(t0reg));
+		xPSUB.SW(xRegisterSSE(EEREC_D), xRegisterSSE(t0reg)); //0x8000 -> 0x7fff
 	}
-	xPXOR(xRegisterSSE(EEREC_D), xRegisterSSE(t0reg)); //0x8000 -> 0x7fff
 	_freeXMMreg(t0reg);
 	_clearNeededXMMregs();
 }
