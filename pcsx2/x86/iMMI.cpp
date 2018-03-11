@@ -1331,26 +1331,69 @@ void recPADDUW()
 		int t0reg = _allocTempXMMreg(XMMT_INT, -1);
 		int t1reg = _allocTempXMMreg(XMMT_INT, -1);
 
-		xPCMP.EQB(xRegisterSSE(t0reg), xRegisterSSE(t0reg));
-		xPSLL.D(xRegisterSSE(t0reg), 31); // 0x80000000
-		xMOVDQA(xRegisterSSE(t1reg), xRegisterSSE(t0reg));
-		xPXOR(xRegisterSSE(t0reg), xRegisterSSE(EEREC_S)); // invert MSB of Rs (for unsigned comparison)
-
-		// normal 32-bit addition
-		if( EEREC_D == EEREC_S ) xPADD.D(xRegisterSSE(EEREC_D), xRegisterSSE(EEREC_T));
-		else if( EEREC_D == EEREC_T ) xPADD.D(xRegisterSSE(EEREC_D), xRegisterSSE(EEREC_S));
-		else {
-			xMOVDQA(xRegisterSSE(EEREC_D), xRegisterSSE(EEREC_S));
-			xPADD.D(xRegisterSSE(EEREC_D), xRegisterSSE(EEREC_T));
+		if ( x86caps.hasStreamingSIMD4Extensions ) {
+			if( EEREC_D == EEREC_S ) {
+				xMOVDQA(xRegisterSSE(t1reg), xRegisterSSE(EEREC_T));
+				xPADD.D(xRegisterSSE(EEREC_D), xRegisterSSE(EEREC_T)); // normal 32-bit addition
+				
+				// unsigned 32-bit comparison
+				xPCMP.EQB(xRegisterSSE(t0reg), xRegisterSSE(t0reg));
+				xPMIN.UD(xRegisterSSE(t1reg), xRegisterSSE(EEREC_D));
+				xPCMP.EQD(xRegisterSSE(t1reg), xRegisterSSE(EEREC_T));
+				xPXOR(xRegisterSSE(t1reg), xRegisterSSE(t0reg));
+				
+				// saturate
+				xPOR(xRegisterSSE(EEREC_D), xRegisterSSE(t1reg)); // clear word with 0xFFFFFFFF if (Rd < Rs)
+			}
+			else if( EEREC_D == EEREC_T ) {
+				xMOVDQA(xRegisterSSE(t1reg), xRegisterSSE(EEREC_S));
+				xPADD.D(xRegisterSSE(EEREC_D), xRegisterSSE(EEREC_S)); // normal 32-bit addition
+				
+				// unsigned 32-bit comparison
+				xPCMP.EQB(xRegisterSSE(t0reg), xRegisterSSE(t0reg));
+				xPMIN.UD(xRegisterSSE(t1reg), xRegisterSSE(EEREC_D));
+				xPCMP.EQD(xRegisterSSE(t1reg), xRegisterSSE(EEREC_S));
+				xPXOR(xRegisterSSE(t1reg), xRegisterSSE(t0reg));
+				
+				// saturate
+				xPOR(xRegisterSSE(EEREC_D), xRegisterSSE(t1reg)); // clear word with 0xFFFFFFFF if (Rd < Rs)
+			}
+			else {
+				xMOVDQA(xRegisterSSE(EEREC_D), xRegisterSSE(EEREC_S));
+				xMOVDQA(xRegisterSSE(t1reg), xRegisterSSE(EEREC_T));
+				xPADD.D(xRegisterSSE(EEREC_D), xRegisterSSE(EEREC_T)); // normal 32-bit addition
+				
+				// unsigned 32-bit comparison
+				xPCMP.EQB(xRegisterSSE(t0reg), xRegisterSSE(t0reg));
+				xPMIN.UD(xRegisterSSE(t1reg), xRegisterSSE(EEREC_D));
+				xPCMP.EQD(xRegisterSSE(t1reg), xRegisterSSE(EEREC_T));
+				xPXOR(xRegisterSSE(t1reg), xRegisterSSE(t0reg));
+				
+				// saturate
+				xPOR(xRegisterSSE(EEREC_D), xRegisterSSE(t1reg)); // clear word with 0xFFFFFFFF if (Rd < Rs)
+			}
 		}
+		else {
+			xPCMP.EQB(xRegisterSSE(t0reg), xRegisterSSE(t0reg));
+			xPSLL.D(xRegisterSSE(t0reg), 31); // 0x80000000
+			xMOVDQA(xRegisterSSE(t1reg), xRegisterSSE(t0reg));
+			xPXOR(xRegisterSSE(t0reg), xRegisterSSE(EEREC_S)); // invert MSB of Rs (for unsigned comparison)
 
-		// unsigned 32-bit comparison
-		xPXOR(xRegisterSSE(t1reg), xRegisterSSE(EEREC_D)); // invert MSB of Rd (for unsigned comparison)
-		xPCMP.GTD(xRegisterSSE(t0reg), xRegisterSSE(t1reg));
+			// normal 32-bit addition
+			if( EEREC_D == EEREC_S ) xPADD.D(xRegisterSSE(EEREC_D), xRegisterSSE(EEREC_T));
+			else if( EEREC_D == EEREC_T ) xPADD.D(xRegisterSSE(EEREC_D), xRegisterSSE(EEREC_S));
+			else {
+				xMOVDQA(xRegisterSSE(EEREC_D), xRegisterSSE(EEREC_S));
+				xPADD.D(xRegisterSSE(EEREC_D), xRegisterSSE(EEREC_T));
+			}
 
-		// saturate
-		xPOR(xRegisterSSE(EEREC_D), xRegisterSSE(t0reg)); // clear word with 0xFFFFFFFF if (Rd < Rs)
+			// unsigned 32-bit comparison
+			xPXOR(xRegisterSSE(t1reg), xRegisterSSE(EEREC_D)); // invert MSB of Rd (for unsigned comparison)
+			xPCMP.GTD(xRegisterSSE(t0reg), xRegisterSSE(t1reg));
 
+			// saturate
+			xPOR(xRegisterSSE(EEREC_D), xRegisterSSE(t0reg)); // clear word with 0xFFFFFFFF if (Rd < Rs)
+		}
 		_freeXMMreg(t0reg);
 		_freeXMMreg(t1reg);
 	}
