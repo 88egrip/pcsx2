@@ -1455,42 +1455,80 @@ void recPSUBUW()
 
 	int info = eeRecompileCodeXMM( XMMINFO_READS|XMMINFO_READT|XMMINFO_WRITED );
 	int t0reg = _allocTempXMMreg(XMMT_INT, -1);
-	int t1reg = _allocTempXMMreg(XMMT_INT, -1);
-
-	xPCMP.EQB(xRegisterSSE(t0reg), xRegisterSSE(t0reg));
-	xPSLL.D(xRegisterSSE(t0reg), 31); // 0x80000000
-
-	// normal 32-bit subtraction
-	// and invert MSB of Rs and Rt (for unsigned comparison)
-	if( EEREC_D == EEREC_S ) {
-		xMOVDQA(xRegisterSSE(t1reg), xRegisterSSE(t0reg));
-		xPXOR(xRegisterSSE(t0reg), xRegisterSSE(EEREC_S));
-		xPXOR(xRegisterSSE(t1reg), xRegisterSSE(EEREC_T));
-		xPSUB.D(xRegisterSSE(EEREC_D), xRegisterSSE(EEREC_T));
-	}
-	else if( EEREC_D == EEREC_T ) {
-		xMOVDQA(xRegisterSSE(t1reg), xRegisterSSE(EEREC_T));
-		xMOVDQA(xRegisterSSE(EEREC_D), xRegisterSSE(EEREC_S));
-		xPSUB.D(xRegisterSSE(EEREC_D), xRegisterSSE(t1reg));
-		xPXOR(xRegisterSSE(t1reg), xRegisterSSE(t0reg));
-		xPXOR(xRegisterSSE(t0reg), xRegisterSSE(EEREC_S));
+	if ( x86caps.hasStreamingSIMD4Extensions ) {
+		if( EEREC_D == EEREC_S ) {
+			xMOVDQA(xRegisterSSE(t0reg), xRegisterSSE(EEREC_S));
+			xPMAX.UD(xRegisterSSE(EEREC_D), xRegisterSSE(EEREC_T));
+			
+			// normal 32-bit subtraction
+			xPSUB.D(xRegisterSSE(t0reg), xRegisterSSE(EEREC_T)); // normal 32-bit subtraction
+			
+			// saturate
+			xPCMP.EQD(xRegisterSSE(EEREC_D), xRegisterSSE(EEREC_T));
+			xPANDN(xRegisterSSE(EEREC_D), xRegisterSSE(t0reg));
+		}
+		else if( EEREC_D == EEREC_T ) {
+			xMOVDQA(xRegisterSSE(t0reg), xRegisterSSE(EEREC_S));
+			
+			// normal 32-bit subtraction
+			xPSUB.D(xRegisterSSE(t0reg), xRegisterSSE(EEREC_T));
+			
+			// saturate
+			xPMAX.UD(xRegisterSSE(EEREC_D), xRegisterSSE(EEREC_S));
+			xPCMP.EQD(xRegisterSSE(EEREC_D), xRegisterSSE(EEREC_S));
+			xPAND(xRegisterSSE(EEREC_D), xRegisterSSE(t0reg));
+		}
+		else {
+			xMOVDQA(xRegisterSSE(EEREC_D), xRegisterSSE(EEREC_S));
+			xMOVDQA(xRegisterSSE(t0reg), xRegisterSSE(EEREC_S));
+			xPMAX.UD(xRegisterSSE(EEREC_D), xRegisterSSE(EEREC_T));
+			
+			// normal 32-bit subtraction
+			xPSUB.D(xRegisterSSE(t0reg), xRegisterSSE(EEREC_T));
+			
+			// saturate
+			xPCMP.EQD(xRegisterSSE(EEREC_D), xRegisterSSE(EEREC_T));
+			xPANDN(xRegisterSSE(EEREC_D), xRegisterSSE(t0reg));
+		}
 	}
 	else {
-		xMOVDQA(xRegisterSSE(EEREC_D), xRegisterSSE(EEREC_S));
-		xPSUB.D(xRegisterSSE(EEREC_D), xRegisterSSE(EEREC_T));
-		xMOVDQA(xRegisterSSE(t1reg), xRegisterSSE(t0reg));
-		xPXOR(xRegisterSSE(t0reg), xRegisterSSE(EEREC_S));
-		xPXOR(xRegisterSSE(t1reg), xRegisterSSE(EEREC_T));
+		int t1reg = _allocTempXMMreg(XMMT_INT, -1);
+
+		xPCMP.EQB(xRegisterSSE(t0reg), xRegisterSSE(t0reg));
+		xPSLL.D(xRegisterSSE(t0reg), 31); // 0x80000000
+
+		// normal 32-bit subtraction
+		// and invert MSB of Rs and Rt (for unsigned comparison)
+		if( EEREC_D == EEREC_S ) {
+			xMOVDQA(xRegisterSSE(t1reg), xRegisterSSE(t0reg));
+			xPXOR(xRegisterSSE(t0reg), xRegisterSSE(EEREC_S));
+			xPXOR(xRegisterSSE(t1reg), xRegisterSSE(EEREC_T));
+			xPSUB.D(xRegisterSSE(EEREC_D), xRegisterSSE(EEREC_T));
+		}
+		else if( EEREC_D == EEREC_T ) {
+			xMOVDQA(xRegisterSSE(t1reg), xRegisterSSE(EEREC_T));
+			xMOVDQA(xRegisterSSE(EEREC_D), xRegisterSSE(EEREC_S));
+			xPSUB.D(xRegisterSSE(EEREC_D), xRegisterSSE(t1reg));
+			xPXOR(xRegisterSSE(t1reg), xRegisterSSE(t0reg));
+			xPXOR(xRegisterSSE(t0reg), xRegisterSSE(EEREC_S));
+		}
+		else {
+			xMOVDQA(xRegisterSSE(EEREC_D), xRegisterSSE(EEREC_S));
+			xPSUB.D(xRegisterSSE(EEREC_D), xRegisterSSE(EEREC_T));
+			xMOVDQA(xRegisterSSE(t1reg), xRegisterSSE(t0reg));
+			xPXOR(xRegisterSSE(t0reg), xRegisterSSE(EEREC_S));
+			xPXOR(xRegisterSSE(t1reg), xRegisterSSE(EEREC_T));
+		}
+
+		// unsigned 32-bit comparison
+		xPCMP.GTD(xRegisterSSE(t0reg), xRegisterSSE(t1reg));
+
+		// saturate
+		xPAND(xRegisterSSE(EEREC_D), xRegisterSSE(t0reg)); // clear word with zero if (Rs <= Rt)
+
+		_freeXMMreg(t1reg);
 	}
-
-	// unsigned 32-bit comparison
-	xPCMP.GTD(xRegisterSSE(t0reg), xRegisterSSE(t1reg));
-
-	// saturate
-	xPAND(xRegisterSSE(EEREC_D), xRegisterSSE(t0reg)); // clear word with zero if (Rs <= Rt)
-
 	_freeXMMreg(t0reg);
-	_freeXMMreg(t1reg);
 	_clearNeededXMMregs();
 }
 
